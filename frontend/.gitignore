@@ -1,0 +1,125 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+/fintrack-backend/node_modules
+/backend/node_modules
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist
+dist-ssr
+/build
+/backend/dist
+/backend/build
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+!.env.example
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.vscode
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Backend specific
+/backend/node_modules
+/backend/dist
+/backend/build
+/backend/.env
+/backend/package-lock.json
+
+# Frontend specific
+/node_modules
+/dist
+/src/**/*.js.map
+/src/**/*.d.ts
+
+# Coverage reports
+coverage
+.nyc_output
+*.lcov
+
+# Temporary files
+*.tmp
+*.temp
+.cache
+.temp
+
+# IDE specific
+.vscode/
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+
+# Test files
+__tests__/
+__mocks__/
+*.test.js
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.ts
+*.spec.tsx
+test-results/
+junit.xml
+
+# Uploads
+/uploads
+/public/uploads
+/temp_uploads
+
+# Secrets
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose*.yml
+
+
+*.env.build
+
+# Supabase
+supabase/.temp
+supabase/.branches
