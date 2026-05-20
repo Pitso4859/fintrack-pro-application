@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
     baseURL: API_BASE_URL,
@@ -17,7 +17,7 @@ api.interceptors.request.use(
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
-        console.log(`${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+        console.log(` ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
         return config;
     },
     (error) => {
@@ -26,14 +26,15 @@ api.interceptors.request.use(
     }
 );
 
-// Response interceptor
+// Response interceptor - FIXED to handle 401 properly
 api.interceptors.response.use(
     (response) => {
-        console.log(`${response.status} ${response.config.url}`);
+        console.log(` ${response.status} ${response.config.url}`);
         return response;
     },
     (error) => {
         console.error('API Error:', error.response?.data || error.message);
+
         // Don't auto-redirect on 401 for login/register pages
         const isAuthPage = window.location.pathname === '/login' ||
             window.location.pathname === '/register' ||
@@ -41,6 +42,7 @@ api.interceptors.response.use(
             window.location.pathname === '/reset-password';
 
         if (error.response?.status === 401 && !isAuthPage) {
+            console.log('Session expired, redirecting to login...');
             localStorage.removeItem('auth_token');
             localStorage.removeItem('user');
             window.location.href = '/login';

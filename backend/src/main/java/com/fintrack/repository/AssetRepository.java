@@ -11,8 +11,11 @@ import java.util.Optional;
 
 @Repository
 public interface AssetRepository extends JpaRepository<Asset, String> {
+
     List<Asset> findByUserIdOrderByPurchaseDateDesc(String userId);
+
     List<Asset> findByUserIdAndStatus(String userId, String status);
+
     Optional<Asset> findByIdAndUserId(String id, String userId);
 
     @Query("SELECT COALESCE(SUM(a.purchasePrice), 0) FROM Asset a WHERE a.userId = :userId")

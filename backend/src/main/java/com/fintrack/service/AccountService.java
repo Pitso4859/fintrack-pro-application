@@ -18,35 +18,37 @@ public class AccountService {
     private final AccountRepository accountRepository;
 
     public List<Account> getAccountsByUser(String userId) {
-        // Ignore userId - return all accounts
-        List<Account> accounts = accountRepository.findAllAccountsOrderByCode();
-        System.out.println("=== AccountService Debug ===");
-        System.out.println("Returning " + (accounts != null ? accounts.size() : 0) + " accounts");
-        if (accounts != null) {
-            for (Account acc : accounts) {
-                System.out.println("  - " + acc.getCode() + ": " + acc.getName() + " (" + acc.getType() + ") - Balance: " + acc.getBalance());
-            }
+        if (userId == null) {
+            return accountRepository.findAllAccountsOrderByCode();
         }
-        return accounts;
+        return accountRepository.findAccountsByUserId(userId);
     }
 
     public Account getAccountByIdAndUser(String id, String userId) {
-        return accountRepository.findById(id)
+        return accountRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new RuntimeException("Account not found"));
     }
 
     @Transactional
     public Account createAccount(Account account, String userId) {
-        // Check for duplicate code in all accounts
-        List<Account> existingAccounts = accountRepository.findAllAccountsOrderByCode();
-        boolean codeExists = existingAccounts.stream()
-                .anyMatch(a -> a.getCode().equals(account.getCode()));
+        // Check for duplicate code for this user
+        boolean codeExists = accountRepository.existsByCodeAndUserId(account.getCode(), userId);
+
+        // Also check system accounts (userId null)
+        if (!codeExists) {
+            // Check if code exists in system accounts
+            Account existingSystemAccount = accountRepository.findByCode(account.getCode()).orElse(null);
+            if (existingSystemAccount != null && existingSystemAccount.getUserId() == null) {
+                codeExists = true;
+            }
+        }
 
         if (codeExists) {
             throw new RuntimeException("Account code already exists");
         }
 
         account.setId("acc-" + System.currentTimeMillis());
+        account.setUserId(userId);
         account.setCreatedAt(LocalDateTime.now());
         if (account.getBalance() == null) {
             account.setBalance(BigDecimal.ZERO);
@@ -74,11 +76,11 @@ public class AccountService {
 
     public Map<String, BigDecimal> getBalanceSummary(String userId) {
         Map<String, BigDecimal> summary = new HashMap<>();
-        summary.put("assets", accountRepository.getTotalAssets());
-        summary.put("liabilities", accountRepository.getTotalLiabilities());
-        summary.put("revenue", accountRepository.getTotalRevenue());
-        summary.put("expenses", accountRepository.getTotalExpenses());
-        summary.put("equity", accountRepository.getTotalRevenue().subtract(accountRepository.getTotalExpenses()));
+        summary.put("assets", accountRepository.getTotalAssets(userId));
+        summary.put("liabilities", accountRepository.getTotalLiabilities(userId));
+        summary.put("revenue", accountRepository.getTotalRevenue(userId));
+        summary.put("expenses", accountRepository.getTotalExpenses(userId));
+        summary.put("equity", accountRepository.getTotalRevenue(userId).subtract(accountRepository.getTotalExpenses(userId)));
         return summary;
     }
 }
