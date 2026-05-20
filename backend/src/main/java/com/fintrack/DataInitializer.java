@@ -29,6 +29,9 @@ public class DataInitializer implements CommandLineRunner {
         try {
             System.out.println("=== DataInitializer Started ===");
 
+            // Create system accounts (userId = null) - these are shared across all users
+            createSystemAccounts();
+
             // Create test user if not exists
             User user = userRepository.findByEmail("test@fintrack.pro").orElse(null);
 
@@ -49,60 +52,8 @@ public class DataInitializer implements CommandLineRunner {
                 System.out.println("Using existing user: " + user.getEmail());
             }
 
-            // Check if accounts already exist (using global method)
-            List<Account> existingAccounts = accountRepository.findAllAccountsOrderByCode();
-
-            if (existingAccounts.isEmpty()) {
-                System.out.println("Creating sample accounts...");
-                createAccountSafely("FNB Business Account", "1200", "Asset", new BigDecimal("150000"));
-                createAccountSafely("Trade Debtors", "1100", "Asset", new BigDecimal("25000"));
-                createAccountSafely("Trade Creditors", "2100", "Liability", BigDecimal.ZERO);
-                createAccountSafely("SARS VAT Control", "2200", "Liability", BigDecimal.ZERO);
-                createAccountSafely("SARS PAYE Liability", "2300", "Liability", BigDecimal.ZERO);
-                createAccountSafely("SARS CIT Provision", "2400", "Liability", BigDecimal.ZERO);
-                createAccountSafely("Service Revenue", "4000", "Revenue", BigDecimal.ZERO);
-                createAccountSafely("Operating Expenses", "5100", "Expense", BigDecimal.ZERO);
-                createAccountSafely("Equity Capital", "3000", "Equity", new BigDecimal("175000"));
-                System.out.println("Sample accounts created!");
-            } else {
-                System.out.println("Accounts already exist (" + existingAccounts.size() + " found).");
-
-                // Ensure required accounts exist for bill processing
-                ensureAccountExists("Trade Creditors", "2100", "Liability", BigDecimal.ZERO);
-                ensureAccountExists("Operating Expenses", "5100", "Expense", BigDecimal.ZERO);
-            }
-
-            // Create sample transaction if none exist
-            List<Transaction> existingTransactions = transactionRepository.findAllTransactionsOrderByDateDesc();
-
-            if (existingTransactions.isEmpty()) {
-                System.out.println("Creating sample transaction...");
-
-                Account equityAccount = accountRepository.findByCode("3000").orElse(null);
-                Account assetAccount = accountRepository.findByCode("1200").orElse(null);
-
-                if (equityAccount != null && assetAccount != null) {
-                    Transaction tx = new Transaction();
-                    tx.setId("tx-" + System.currentTimeMillis());
-                    tx.setTransactionDate(LocalDate.of(2024, 1, 1));
-                    tx.setDescription("Initial Business Capital");
-                    tx.setAmount(new BigDecimal("175000"));
-                    tx.setVatAmount(BigDecimal.ZERO);
-                    tx.setVatRate(BigDecimal.ZERO);
-                    tx.setFromAccountId(equityAccount.getId());
-                    tx.setToAccountId(assetAccount.getId());
-                    tx.setCategory("Capital");
-                    tx.setType("JOURNAL");
-                    tx.setIsVatClaimed(false);
-                    tx.setCreatedAt(LocalDateTime.now());
-                    transactionRepository.save(tx);
-                    System.out.println("Sample transaction created!");
-                } else {
-                    System.out.println("Could not find required accounts for sample transaction");
-                }
-            } else {
-                System.out.println("Transactions already exist (" + existingTransactions.size() + " found).");
-            }
+            // Create user-specific accounts if they don't exist
+            createUserAccounts(user.getId());
 
             System.out.println("=== Data Initialization Complete ===");
             printAccountSummary();
@@ -113,32 +64,63 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    private void createAccountSafely(String name, String code, String type, BigDecimal balance) {
+    private void createSystemAccounts() {
+        System.out.println("Creating system accounts...");
+
+        createSystemAccount("FNB Business Account", "1200", "Asset", new BigDecimal("150000"));
+        createSystemAccount("Trade Debtors", "1100", "Asset", new BigDecimal("25000"));
+        createSystemAccount("Trade Creditors", "2100", "Liability", BigDecimal.ZERO);
+        createSystemAccount("SARS VAT Control", "2200", "Liability", BigDecimal.ZERO);
+        createSystemAccount("SARS PAYE Liability", "2300", "Liability", BigDecimal.ZERO);
+        createSystemAccount("SARS CIT Provision", "2400", "Liability", BigDecimal.ZERO);
+        createSystemAccount("Service Revenue", "4000", "Revenue", BigDecimal.ZERO);
+        createSystemAccount("Operating Expenses", "5100", "Expense", BigDecimal.ZERO);
+        createSystemAccount("Equity Capital", "3000", "Equity", new BigDecimal("175000"));
+    }
+
+    private void createSystemAccount(String name, String code, String type, BigDecimal balance) {
         try {
-            // Check if account with this code already exists (global check)
             boolean exists = accountRepository.existsByCode(code);
 
             if (!exists) {
                 Account account = new Account();
-                account.setId("acc-" + System.currentTimeMillis() + "-" + code);
+                account.setId("sys-acc-" + code);
                 account.setName(name);
                 account.setCode(code);
                 account.setType(type);
                 account.setBalance(balance);
+                account.setUserId(null); // System account - shared
                 account.setCreatedAt(LocalDateTime.now());
                 accountRepository.save(account);
-                System.out.println("  Created: " + name + " (" + code + ") - Balance: " + balance);
+                System.out.println("  Created system account: " + name + " (" + code + ")");
             } else {
-                System.out.println("  Already exists: " + name + " (" + code + ")");
+                System.out.println("  System account already exists: " + name + " (" + code + ")");
             }
         } catch (Exception e) {
-            System.err.println("  Failed to create account " + name + ": " + e.getMessage());
+            System.err.println("  Failed to create system account " + name + ": " + e.getMessage());
         }
     }
 
-    private void ensureAccountExists(String name, String code, String type, BigDecimal balance) {
+    private void createUserAccounts(String userId) {
+        System.out.println("Creating user-specific accounts for: " + userId);
+
+        // Check if user already has custom accounts
+        List<Account> userAccounts = accountRepository.findAccountsByUserId(userId);
+        if (!userAccounts.isEmpty()) {
+            System.out.println("User accounts already exist (" + userAccounts.size() + " found).");
+            return;
+        }
+
+        // Create user-specific accounts (these will override system accounts for this user)
+        createUserAccount("Petty Cash", "1010", "Asset", BigDecimal.ZERO, userId);
+        createUserAccount("Inventory", "1300", "Asset", BigDecimal.ZERO, userId);
+        createUserAccount("Marketing Expense", "5200", "Expense", BigDecimal.ZERO, userId);
+        createUserAccount("Salaries Expense", "5300", "Expense", BigDecimal.ZERO, userId);
+    }
+
+    private void createUserAccount(String name, String code, String type, BigDecimal balance, String userId) {
         try {
-            boolean exists = accountRepository.existsByCode(code);
+            boolean exists = accountRepository.existsByCodeAndUserId(code, userId);
 
             if (!exists) {
                 Account account = new Account();
@@ -147,14 +129,13 @@ public class DataInitializer implements CommandLineRunner {
                 account.setCode(code);
                 account.setType(type);
                 account.setBalance(balance);
+                account.setUserId(userId);
                 account.setCreatedAt(LocalDateTime.now());
                 accountRepository.save(account);
-                System.out.println("Created missing account: " + name + " (" + code + ")");
-            } else {
-                System.out.println("Account already exists: " + name + " (" + code + ")");
+                System.out.println("  Created user account: " + name + " (" + code + ")");
             }
         } catch (Exception e) {
-            System.err.println("Failed to ensure account " + name + ": " + e.getMessage());
+            System.err.println("  Failed to create user account " + name + ": " + e.getMessage());
         }
     }
 
@@ -166,6 +147,7 @@ public class DataInitializer implements CommandLineRunner {
                 System.out.println("  Code: " + acc.getCode() +
                         ", Name: " + acc.getName() +
                         ", Type: " + acc.getType() +
+                        ", User: " + (acc.getUserId() == null ? "SYSTEM" : acc.getUserId().substring(0, 8)) +
                         ", Balance: " + acc.getBalance());
             }
         } else {

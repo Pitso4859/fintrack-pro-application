@@ -1,4 +1,4 @@
-
+// constants.ts
 import { Account, AccountType, Transaction, Currency } from './types.ts';
 
 export const SUPPORTED_CURRENCIES: Currency[] = [

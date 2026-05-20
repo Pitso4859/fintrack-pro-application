@@ -1,6 +1,7 @@
 package com.fintrack.service;
 
 import com.fintrack.dto.ReportDTO;
+import com.fintrack.model.Transaction;
 import com.fintrack.repository.AccountRepository;
 import com.fintrack.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,13 +22,12 @@ public class ReportService {
     public Map<String, Object> getDashboardData(String userId) {
         Map<String, Object> data = new HashMap<>();
 
-        // Use methods without userId parameter (ignore userId)
-        BigDecimal cashBalance = accountRepository.getTotalAssets();
-        BigDecimal totalRevenue = accountRepository.getTotalRevenue();
-        BigDecimal totalExpenses = accountRepository.getTotalExpenses();
+        BigDecimal cashBalance = accountRepository.getTotalAssets(userId);
+        BigDecimal totalRevenue = accountRepository.getTotalRevenue(userId);
+        BigDecimal totalExpenses = accountRepository.getTotalExpenses(userId);
         BigDecimal netProfit = totalRevenue.subtract(totalExpenses);
-        BigDecimal outputVat = transactionRepository.getTotalOutputVat();
-        BigDecimal inputVat = transactionRepository.getTotalInputVat();
+        BigDecimal outputVat = transactionRepository.getTotalOutputVat(userId);
+        BigDecimal inputVat = transactionRepository.getTotalInputVat(userId);
         BigDecimal vatLiability = outputVat.subtract(inputVat);
 
         data.put("cashBalance", cashBalance != null ? cashBalance : BigDecimal.ZERO);
@@ -35,6 +35,11 @@ public class ReportService {
         data.put("totalExpenses", totalExpenses != null ? totalExpenses : BigDecimal.ZERO);
         data.put("netProfit", netProfit);
         data.put("vatLiability", vatLiability != null ? vatLiability : BigDecimal.ZERO);
+
+        // Add more dashboard data
+        data.put("outputVat", outputVat != null ? outputVat : BigDecimal.ZERO);
+        data.put("inputVat", inputVat != null ? inputVat : BigDecimal.ZERO);
+        data.put("unclaimedVat", transactionRepository.getTotalUnclaimedVat(userId));
 
         return data;
     }
@@ -45,8 +50,8 @@ public class ReportService {
         LocalDate startDate = LocalDate.of(year, 1, 1);
         LocalDate endDate = LocalDate.of(year, 12, 31);
 
-        BigDecimal revenue = transactionRepository.getTotalRevenueExcludingVat();
-        BigDecimal expenses = transactionRepository.getTotalExpensesExcludingVat();
+        BigDecimal revenue = transactionRepository.getTotalRevenueExcludingVat(userId);
+        BigDecimal expenses = transactionRepository.getTotalExpensesExcludingVat(userId);
 
         if (revenue == null) revenue = BigDecimal.ZERO;
         if (expenses == null) expenses = BigDecimal.ZERO;
@@ -56,7 +61,7 @@ public class ReportService {
         report.setNetProfit(revenue.subtract(expenses));
 
         // Get category breakdowns
-        List<Object[]> revenueByCat = transactionRepository.getCategoryBreakdown("INVOICE");
+        List<Object[]> revenueByCat = transactionRepository.getCategoryBreakdown("INVOICE", userId);
         Map<String, BigDecimal> revenueMap = new HashMap<>();
         if (revenueByCat != null) {
             for (Object[] row : revenueByCat) {
@@ -65,7 +70,7 @@ public class ReportService {
         }
         report.setRevenueByCategory(revenueMap);
 
-        List<Object[]> expensesByCat = transactionRepository.getCategoryBreakdown("EXPENSE");
+        List<Object[]> expensesByCat = transactionRepository.getCategoryBreakdown("EXPENSE", userId);
         Map<String, BigDecimal> expensesMap = new HashMap<>();
         if (expensesByCat != null) {
             for (Object[] row : expensesByCat) {
@@ -75,8 +80,8 @@ public class ReportService {
         report.setExpensesByCategory(expensesMap);
 
         // VAT calculations
-        BigDecimal outputVat = transactionRepository.getTotalOutputVat();
-        BigDecimal inputVat = transactionRepository.getTotalInputVat();
+        BigDecimal outputVat = transactionRepository.getTotalOutputVat(userId);
+        BigDecimal inputVat = transactionRepository.getTotalInputVat(userId);
 
         report.setOutputVat(outputVat != null ? outputVat : BigDecimal.ZERO);
         report.setInputVat(inputVat != null ? inputVat : BigDecimal.ZERO);
@@ -88,10 +93,10 @@ public class ReportService {
     public Map<String, Object> getBalanceSheet(String userId) {
         Map<String, Object> balanceSheet = new HashMap<>();
 
-        BigDecimal assets = accountRepository.getTotalAssets();
-        BigDecimal liabilities = accountRepository.getTotalLiabilities();
-        BigDecimal revenue = accountRepository.getTotalRevenue();
-        BigDecimal expenses = accountRepository.getTotalExpenses();
+        BigDecimal assets = accountRepository.getTotalAssets(userId);
+        BigDecimal liabilities = accountRepository.getTotalLiabilities(userId);
+        BigDecimal revenue = accountRepository.getTotalRevenue(userId);
+        BigDecimal expenses = accountRepository.getTotalExpenses(userId);
 
         balanceSheet.put("assets", assets != null ? assets : BigDecimal.ZERO);
         balanceSheet.put("liabilities", liabilities != null ? liabilities : BigDecimal.ZERO);
@@ -113,9 +118,8 @@ public class ReportService {
         LocalDate startDate = LocalDate.of(year, (quarter - 1) * 3 + 1, 1);
         LocalDate endDate = startDate.plusMonths(3).minusDays(1);
 
-        // Get transactions for the quarter (ignore userId)
-        List<com.fintrack.model.Transaction> transactions =
-                transactionRepository.findByTransactionDateBetween(startDate, endDate);
+        // Get transactions for the quarter for this user
+        List<Transaction> transactions = transactionRepository.findByUserIdAndTransactionDateBetween(userId, startDate, endDate);
 
         BigDecimal standardRateSales = BigDecimal.ZERO;
         BigDecimal outputVat = BigDecimal.ZERO;
@@ -123,7 +127,7 @@ public class ReportService {
         BigDecimal inputVat = BigDecimal.ZERO;
 
         if (transactions != null) {
-            for (com.fintrack.model.Transaction tx : transactions) {
+            for (Transaction tx : transactions) {
                 if (tx == null) continue;
 
                 if ("INVOICE".equals(tx.getType())) {

@@ -19,18 +19,22 @@ public class TransactionService {
     private final AccountRepository accountRepository;
 
     public List<Transaction> getTransactionsByUser(String userId) {
-        return transactionRepository.findAllTransactionsOrderByDateDesc();
+        if (userId == null) {
+            return transactionRepository.findAllTransactionsOrderByDateDesc();
+        }
+        return transactionRepository.findTransactionsByUserId(userId);
     }
 
     public Transaction getTransactionByIdAndUser(String id, String userId) {
-        return transactionRepository.findById(id)
+        return transactionRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new RuntimeException("Transaction not found"));
     }
 
     @Transactional
     public Transaction createTransaction(Transaction transaction, String userId) {
         System.out.println("=== TransactionService Debug ===");
-        System.out.println("Creating transaction: " + transaction.getDescription());
+        System.out.println("Creating transaction for user: " + userId);
+        System.out.println("Description: " + transaction.getDescription());
         System.out.println("From Account ID: " + transaction.getFromAccountId());
         System.out.println("To Account ID: " + transaction.getToAccountId());
         System.out.println("Amount: " + transaction.getAmount());
@@ -41,11 +45,16 @@ public class TransactionService {
 
         // Validate and update account balances
         if (transaction.getFromAccountId() != null && !transaction.getFromAccountId().isEmpty()) {
-            Account fromAccount = accountRepository.findById(transaction.getFromAccountId()).orElse(null);
+            Account fromAccount = accountRepository.findByIdAndUserId(transaction.getFromAccountId(), userId)
+                    .orElse(null);
             if (fromAccount == null) {
-                String error = "From account not found: " + transaction.getFromAccountId();
-                System.err.println(error);
-                throw new RuntimeException(error);
+                // Try system account
+                fromAccount = accountRepository.findById(transaction.getFromAccountId()).orElse(null);
+                if (fromAccount == null || fromAccount.getUserId() != null) {
+                    String error = "From account not found: " + transaction.getFromAccountId();
+                    System.err.println(error);
+                    throw new RuntimeException(error);
+                }
             }
             System.out.println("From account found: " + fromAccount.getCode() + " - " + fromAccount.getName());
             System.out.println("From account current balance: " + fromAccount.getBalance());
@@ -58,11 +67,16 @@ public class TransactionService {
         }
 
         if (transaction.getToAccountId() != null && !transaction.getToAccountId().isEmpty()) {
-            Account toAccount = accountRepository.findById(transaction.getToAccountId()).orElse(null);
+            Account toAccount = accountRepository.findByIdAndUserId(transaction.getToAccountId(), userId)
+                    .orElse(null);
             if (toAccount == null) {
-                String error = "To account not found: " + transaction.getToAccountId();
-                System.err.println(error);
-                throw new RuntimeException(error);
+                // Try system account
+                toAccount = accountRepository.findById(transaction.getToAccountId()).orElse(null);
+                if (toAccount == null || toAccount.getUserId() != null) {
+                    String error = "To account not found: " + transaction.getToAccountId();
+                    System.err.println(error);
+                    throw new RuntimeException(error);
+                }
             }
             System.out.println("To account found: " + toAccount.getCode() + " - " + toAccount.getName());
             System.out.println("To account current balance: " + toAccount.getBalance());
@@ -87,15 +101,20 @@ public class TransactionService {
         return transactionRepository.save(transaction);
     }
 
+    @Transactional
     public void deleteTransaction(String id, String userId) {
         Transaction transaction = getTransactionByIdAndUser(id, userId);
-        reverseAccountBalances(transaction);
+        reverseAccountBalances(transaction, userId);
         transactionRepository.delete(transaction);
     }
 
-    private void reverseAccountBalances(Transaction transaction) {
+    private void reverseAccountBalances(Transaction transaction, String userId) {
         if (transaction.getFromAccountId() != null && !transaction.getFromAccountId().isEmpty()) {
-            Account fromAccount = accountRepository.findById(transaction.getFromAccountId()).orElse(null);
+            Account fromAccount = accountRepository.findByIdAndUserId(transaction.getFromAccountId(), userId)
+                    .orElse(null);
+            if (fromAccount == null) {
+                fromAccount = accountRepository.findById(transaction.getFromAccountId()).orElse(null);
+            }
             if (fromAccount != null) {
                 fromAccount.setBalance(fromAccount.getBalance().add(transaction.getAmount()));
                 accountRepository.save(fromAccount);
@@ -103,7 +122,11 @@ public class TransactionService {
         }
 
         if (transaction.getToAccountId() != null && !transaction.getToAccountId().isEmpty()) {
-            Account toAccount = accountRepository.findById(transaction.getToAccountId()).orElse(null);
+            Account toAccount = accountRepository.findByIdAndUserId(transaction.getToAccountId(), userId)
+                    .orElse(null);
+            if (toAccount == null) {
+                toAccount = accountRepository.findById(transaction.getToAccountId()).orElse(null);
+            }
             if (toAccount != null) {
                 toAccount.setBalance(toAccount.getBalance().subtract(transaction.getAmount()));
                 accountRepository.save(toAccount);

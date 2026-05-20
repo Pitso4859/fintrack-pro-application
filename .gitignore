@@ -1,47 +1,53 @@
-# Backend
-backend/target/
-backend/.idea/
-backend/*.log
-backend/.mvn/
-backend/mvnw
-backend/mvnw.cmd
+@"
+# Compiled files
+*.class
+*.jar
+*.war
+*.ear
+target/
+build/
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-frontend/.env.local
-frontend/.env*.local
-
-# IDE
+# IDE files
 .idea/
-.vscode/
 *.iml
-*.swp
-*.swo
-*~
-
-# OS files
+.vscode/
+.settings/
+.project
+.classpath
 .DS_Store
-Thumbs.db
-desktop.ini
 
 # Logs
+logs/
 *.log
+
+# Environment files
+.env
+.env.local
+.env.production
+application-prod.properties
+application-prod.properties
+
+# Node modules
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Environment files
-.env
-.env.*
-!.env.example
+# Build outputs
+dist/
+build/
 
 # Database
 *.db
 *.sqlite
-*.sqlite3
+
+# OS files
+Thumbs.db
+Desktop.ini
 
 # Secrets
-**/application-secrets.properties
-**/secrets/
+*secret*
+*password*
+*.key
+*.pem
+"@ | Out-File -FilePath .gitignore -Encoding utf8

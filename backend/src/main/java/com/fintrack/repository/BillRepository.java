@@ -11,9 +11,13 @@ import java.util.Optional;
 
 @Repository
 public interface BillRepository extends JpaRepository<Bill, String> {
+
     List<Bill> findByUserIdOrderByCreatedAtDesc(String userId);
+
     List<Bill> findByUserIdAndStatusOrderByCreatedAtDesc(String userId, String status);
+
     Optional<Bill> findByIdAndUserId(String id, String userId);
+
     long countByUserIdAndStatus(String userId, String status);
 
     @Query("SELECT COALESCE(SUM(b.totalAmount), 0) FROM Bill b WHERE b.userId = :userId AND b.status = 'PENDING'")

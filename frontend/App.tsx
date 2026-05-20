@@ -21,7 +21,6 @@ import {
   HardDrive,
   Loader2,
   LogOut,
-  User as UserIcon,
 } from 'lucide-react';
 
 import { SUPPORTED_CURRENCIES } from './constants';
@@ -49,7 +48,6 @@ import AssetRegister from './components/AssetRegister';
 
 // Services
 import api from './services/api';
-
 
 // ============================================================================
 // Protected Route Wrapper
@@ -92,11 +90,12 @@ const AuthenticatedApp: React.FC = () => {
   // View state - which screen is currently active
   const [view, setView] = useState<ViewState>('DASHBOARD');
 
-  // Data states
+  // Data states - keep the data as is from the backend
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [assets, setAssets] = useState<AssetRecord[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
 
   // UI states
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -126,10 +125,22 @@ const AuthenticatedApp: React.FC = () => {
           api.get('/assets', { headers }),
         ]);
 
+        console.log('Fetched accounts from backend:', accRes.data);
+
         setAccounts(accRes.data || []);
         setTransactions(txRes.data || []);
         setBills(billsRes.data || []);
         setAssets(assetsRes.data || []);
+
+        // Fetch dashboard stats separately
+        try {
+          const statsRes = await api.get('/dashboard/stats', { headers });
+          setDashboardStats(statsRes.data);
+          console.log('Dashboard stats:', statsRes.data);
+        } catch (statsErr) {
+          console.error('Failed to fetch dashboard stats:', statsErr);
+        }
+
       } catch (err) {
         console.error('Failed to fetch data', err);
         setError('Could not load data from the server.');
@@ -142,42 +153,20 @@ const AuthenticatedApp: React.FC = () => {
   }, []);
 
   // ------------------------------------------------------------------
-  // 2. Core Accounting Logic: Update account balances
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    if (accounts.length === 0) return;
-
-    const updatedAccounts = accounts.map(acc => ({ ...acc, balance: 0 }));
-
-    transactions.forEach(tx => {
-      const fromAcc = updatedAccounts.find(a => a.id === tx.fromAccount);
-      const toAcc = updatedAccounts.find(a => a.id === tx.toAccount);
-
-      if (fromAcc) {
-        if (fromAcc.type === AccountType.ASSET || fromAcc.type === AccountType.EXPENSE) {
-          fromAcc.balance -= tx.amount;
-        } else {
-          fromAcc.balance += tx.amount;
-        }
-      }
-
-      if (toAcc) {
-        if (toAcc.type === AccountType.ASSET || toAcc.type === AccountType.EXPENSE) {
-          toAcc.balance += tx.amount;
-        } else {
-          toAcc.balance -= tx.amount;
-        }
-      }
-    });
-
-    setAccounts(updatedAccounts);
-  }, [transactions]);
-
-  // ------------------------------------------------------------------
-  // 3. Mutation functions
+  // 2. Mutation functions
   // ------------------------------------------------------------------
   const addTransaction = (tx: Transaction) => {
     setTransactions(prev => [tx, ...prev]);
+    // Also update the affected account balances locally
+    setAccounts(prev => prev.map(acc => {
+      if (acc.id === tx.fromAccount) {
+        return { ...acc, balance: acc.balance - tx.amount };
+      }
+      if (acc.id === tx.toAccount) {
+        return { ...acc, balance: acc.balance + tx.amount };
+      }
+      return acc;
+    }));
   };
 
   const toggleVatClaim = async (txIds: string[]) => {
@@ -189,7 +178,7 @@ const AuthenticatedApp: React.FC = () => {
           txIds.map(async (id) => {
             const tx = transactions.find(t => t.id === id);
             if (!tx) return;
-            await api.put(`/transactions/${id}`, { isVatClaimed: !tx.isVatClaimed }, { headers });
+            await api.put(`/transactions/${id}`, { is_vat_claimed: !tx.isVatClaimed }, { headers });
           })
       );
       setTransactions(prev =>
@@ -212,7 +201,7 @@ const AuthenticatedApp: React.FC = () => {
   };
 
   // ------------------------------------------------------------------
-  // 4. Navigation menu items
+  // 3. Navigation menu items
   // ------------------------------------------------------------------
   const menuItems = [
     { id: 'DASHBOARD', label: 'Dashboard', icon: LayoutDashboard },
@@ -226,8 +215,16 @@ const AuthenticatedApp: React.FC = () => {
     { id: 'AI_INSIGHTS', label: 'SARS AI Auditor', icon: Sparkles },
   ];
 
+  // Debug logging for reports
+  useEffect(() => {
+    console.log('=== Current Account Balances ===');
+    accounts.forEach(acc => {
+      console.log(`${acc.name} (${acc.type}): ${currency.symbol}${acc.balance}`);
+    });
+  }, [accounts, currency]);
+
   // ------------------------------------------------------------------
-  // 5. Render view based on state
+  // 4. Render view based on state
   // ------------------------------------------------------------------
   const renderView = () => {
     switch (view) {
@@ -245,6 +242,7 @@ const AuthenticatedApp: React.FC = () => {
             />
         );
       case 'REPORTS':
+        console.log('Rendering Reports with accounts:', accounts);
         return <Reports accounts={accounts} transactions={transactions} currency={currency} />;
       case 'VAT':
         return (
