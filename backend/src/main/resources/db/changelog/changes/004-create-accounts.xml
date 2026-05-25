@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="004-create-accounts" author="fintrack">
+        <createTable tableName="accounts">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="code" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="type" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="normal_balance" type="VARCHAR(6)" defaultValue="DEBIT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="balance" type="DECIMAL(18,2)" defaultValueNumeric="0.00">
+                <constraints nullable="false"/>
+            </column>
+            <column name="currency" type="VARCHAR(3)" defaultValue="ZAR"/>
+            <column name="description" type="VARCHAR(500)"/>
+            <column name="vat_applicable" type="BOOLEAN" defaultValueBoolean="false"/>
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+        </createTable>
+
+        <createIndex tableName="accounts" indexName="idx_accounts_user">
+            <column name="user_id"/>
+        </createIndex>
+        <createIndex tableName="accounts" indexName="idx_accounts_code">
+            <column name="user_id"/>
+            <column name="code"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

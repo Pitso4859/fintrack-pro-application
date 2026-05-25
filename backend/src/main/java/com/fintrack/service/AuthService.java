@@ -1,175 +1,197 @@
 package com.fintrack.service;
 
-import com.fintrack.model.Session;
+import com.fintrack.dto.AuthDTO;
+import com.fintrack.exception.AuthException;
+import com.fintrack.model.RefreshToken;
 import com.fintrack.model.User;
-import com.fintrack.model.UserSettings;
-import com.fintrack.repository.SessionRepository;
+import com.fintrack.repository.RefreshTokenRepository;
 import com.fintrack.repository.UserRepository;
-import com.fintrack.repository.UserSettingsRepository;
-import com.fintrack.security.PasswordUtil;
+import com.fintrack.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
+import java.time.Instant;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final SessionRepository sessionRepository;
-    private final UserSettingsRepository userSettingsRepository;
-    private final PasswordUtil passwordUtil;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final JwtTokenProvider tokenProvider;
+    private final PasswordEncoder passwordEncoder;
 
-    private static final int TOKEN_EXPIRY_HOURS = 24;
+    // ----------------------------------------------------------------
+    // REGISTRATION
+    // ----------------------------------------------------------------
 
     @Transactional
-    public Map<String, Object> register(String email, String password, String firstName, String lastName, String companyName) {
-        Map<String, Object> response = new HashMap<>();
-
-        if (userRepository.existsByEmail(email)) {
-            response.put("success", false);
-            response.put("message", "Email already registered");
-            return response;
+    public AuthDTO.AuthResponse register(AuthDTO.RegisterRequest request) {
+        if (userRepository.existsByEmail(request.email())) {
+            throw new AuthException("An account with this email already exists");
         }
 
-        User user = new User();
-        user.setId("usr-" + System.currentTimeMillis());
-        user.setEmail(email);
-        user.setPasswordHash(passwordUtil.hashPassword(password));
-        user.setFirstName(firstName);
-        user.setLastName(lastName);
-        user.setCompanyName(companyName);
-        user.setEmailVerified(true);
-        user.setVerificationToken(UUID.randomUUID().toString());
-        user.setCreatedAt(LocalDateTime.now());
-        user.setUpdatedAt(LocalDateTime.now());
+        User user = User.builder()
+                .email(request.email().toLowerCase().trim())
+                .passwordHash(passwordEncoder.encode(request.password()))
+                .firstName(request.firstName())
+                .lastName(request.lastName())
+                .companyName(request.companyName())
+                .taxNumber(request.taxNumber())
+                .vatNumber(request.vatNumber())
+                .emailVerified(true) // Skip email verification for now
+                .role(User.UserRole.ADMIN)
+                .build();
 
         userRepository.save(user);
+        log.info("New user registered: {}", user.getEmail());
 
-        UserSettings settings = new UserSettings();
-        settings.setUserId(user.getId());
-        userSettingsRepository.save(settings);
-
-        response.put("success", true);
-        response.put("message", "Registration successful");
-        response.put("userId", user.getId());
-
-        return response;
+        return buildAuthResponse(user);
     }
+
+    // ----------------------------------------------------------------
+    // LOGIN
+    // ----------------------------------------------------------------
 
     @Transactional
-    public Map<String, Object> login(String email, String password) {
-        Map<String, Object> response = new HashMap<>();
+    public AuthDTO.AuthResponse login(AuthDTO.LoginRequest request) {
+        User user = userRepository.findByEmail(request.email().toLowerCase().trim())
+                .orElseThrow(() -> new AuthException("Invalid email or password"));
 
-        User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null) {
-            response.put("success", false);
-            response.put("message", "Invalid email or password");
-            return response;
+        if (!user.getIsActive()) {
+            throw new AuthException("Account is deactivated. Please contact support.");
         }
 
-        if (!passwordUtil.verifyPassword(password, user.getPasswordHash())) {
-            response.put("success", false);
-            response.put("message", "Invalid email or password");
-            return response;
+        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            throw new AuthException("Invalid email or password");
         }
 
-        // Clean old sessions for this user
-        sessionRepository.deleteByUserId(user.getId());
+        // Revoke all existing refresh tokens for this user (single device policy)
+        refreshTokenRepository.revokeAllByUserId(user.getId());
 
-        String token = UUID.randomUUID().toString() + UUID.randomUUID().toString();
-        Session session = new Session();
-        session.setId("ses-" + System.currentTimeMillis());
-        session.setUserId(user.getId());
-        session.setToken(token);
-        session.setExpiresAt(LocalDateTime.now().plusHours(TOKEN_EXPIRY_HOURS));
-        session.setCreatedAt(LocalDateTime.now());
-        sessionRepository.save(session);
-
-        response.put("success", true);
-        response.put("message", "Login successful");
-        response.put("token", token);
-        response.put("userId", user.getId());
-        response.put("email", user.getEmail());
-        response.put("firstName", user.getFirstName());
-        response.put("lastName", user.getLastName());
-        response.put("companyName", user.getCompanyName());
-
-        return response;
+        log.info("User logged in: {}", user.getEmail());
+        return buildAuthResponse(user);
     }
 
-    public User validateToken(String token) {
-        if (token == null || token.isEmpty()) return null;
-
-        Session session = sessionRepository.findByToken(token).orElse(null);
-        if (session == null || session.getExpiresAt().isBefore(LocalDateTime.now())) {
-            if (session != null) {
-                sessionRepository.delete(session);
-            }
-            return null;
-        }
-        return userRepository.findById(session.getUserId()).orElse(null);
-    }
+    // ----------------------------------------------------------------
+    // TOKEN REFRESH
+    // ----------------------------------------------------------------
 
     @Transactional
-    public Map<String, Object> logout(String token) {
-        if (token != null && !token.isEmpty()) {
-            sessionRepository.deleteByToken(token);
+    public AuthDTO.AuthResponse refreshToken(String refreshTokenStr) {
+        RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenStr)
+                .orElseThrow(() -> new AuthException("Invalid refresh token"));
+
+        if (!refreshToken.isValid()) {
+            refreshTokenRepository.delete(refreshToken);
+            throw new AuthException("Refresh token expired or revoked. Please log in again.");
         }
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "Logged out successfully");
-        return response;
+
+        User user = userRepository.findById(refreshToken.getUserId())
+                .orElseThrow(() -> new AuthException("User not found"));
+
+        // Rotate: revoke old, issue new
+        refreshToken.setRevoked(true);
+        refreshTokenRepository.save(refreshToken);
+
+        return buildAuthResponse(user);
     }
 
-    public User getUserById(String userId) {
-        return userRepository.findById(userId).orElse(null);
-    }
-
-    public User getUserByEmail(String email) {
-        return userRepository.findByEmail(email).orElse(null);
-    }
+    // ----------------------------------------------------------------
+    // LOGOUT
+    // ----------------------------------------------------------------
 
     @Transactional
-    public Map<String, Object> changePassword(String userId, String oldPassword, String newPassword) {
-        Map<String, Object> response = new HashMap<>();
-        User user = getUserById(userId);
+    public void logout(String refreshTokenStr) {
+        refreshTokenRepository.findByToken(refreshTokenStr).ifPresent(token -> {
+            token.setRevoked(true);
+            refreshTokenRepository.save(token);
+        });
+    }
 
-        if (user == null) {
-            response.put("success", false);
-            response.put("message", "User not found");
-            return response;
+    // ----------------------------------------------------------------
+    // GET CURRENT USER
+    // ----------------------------------------------------------------
+
+    public AuthDTO.UserInfo getCurrentUser(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AuthException("User not found"));
+        return toUserInfo(user);
+    }
+
+    // ----------------------------------------------------------------
+    // CHANGE PASSWORD
+    // ----------------------------------------------------------------
+
+    @Transactional
+    public void changePassword(String userId, AuthDTO.ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AuthException("User not found"));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new AuthException("Current password is incorrect");
         }
 
-        if (!passwordUtil.verifyPassword(oldPassword, user.getPasswordHash())) {
-            response.put("success", false);
-            response.put("message", "Current password is incorrect");
-            return response;
-        }
-
-        user.setPasswordHash(passwordUtil.hashPassword(newPassword));
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         userRepository.save(user);
 
-        // Invalidate all sessions
-        sessionRepository.deleteByUserId(userId);
-
-        response.put("success", true);
-        response.put("message", "Password changed successfully");
-        return response;
+        // Revoke all refresh tokens — force re-login on all devices
+        refreshTokenRepository.revokeAllByUserId(userId);
+        log.info("Password changed for user: {}", user.getEmail());
     }
 
-    @Scheduled(cron = "0 0 * * * *") // Run every hour
+    // ----------------------------------------------------------------
+    // CLEANUP
+    // ----------------------------------------------------------------
+
+    @Scheduled(cron = "0 0 2 * * *") // Daily at 02:00
     @Transactional
-    public void cleanExpiredSessions() {
-        int deleted = sessionRepository.deleteExpiredSessions(LocalDateTime.now());
-        if (deleted > 0) {
-            System.out.println("Cleaned up " + deleted + " expired sessions");
-        }
+    public void cleanExpiredTokens() {
+        int deleted = refreshTokenRepository.deleteExpiredAndRevoked(Instant.now());
+        if (deleted > 0) log.info("Cleaned {} expired/revoked refresh tokens", deleted);
+    }
+
+    // ----------------------------------------------------------------
+    // PRIVATE HELPERS
+    // ----------------------------------------------------------------
+
+    private AuthDTO.AuthResponse buildAuthResponse(User user) {
+        String accessToken  = tokenProvider.generateAccessToken(
+                user.getId(), user.getEmail(), user.getRole().name());
+        String refreshToken = tokenProvider.generateRefreshToken(user.getId());
+
+        Instant expiresAt = Instant.now().plusMillis(
+                tokenProvider.getRefreshTokenExpirationMs());
+
+        RefreshToken rt = RefreshToken.builder()
+                .token(refreshToken)
+                .userId(user.getId())
+                .expiresAt(expiresAt)
+                .build();
+        refreshTokenRepository.save(rt);
+
+        return AuthDTO.AuthResponse.of(
+                accessToken,
+                refreshToken,
+                tokenProvider.getAccessTokenExpirationMs() / 1000,
+                toUserInfo(user)
+        );
+    }
+
+    private AuthDTO.UserInfo toUserInfo(User user) {
+        return new AuthDTO.UserInfo(
+                user.getId(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getCompanyName(),
+                user.getRole().name(),
+                user.getDefaultCurrency()
+        );
     }
 }

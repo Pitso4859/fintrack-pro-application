@@ -1,91 +1,71 @@
 package com.fintrack.controller;
 
+import com.fintrack.dto.AuthDTO;
 import com.fintrack.service.AuthService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Tag(name = "Authentication", description = "Register, login, token refresh and logout")
 public class AuthController {
 
     private final AuthService authService;
 
     @PostMapping("/register")
-    public ResponseEntity<Map<String, Object>> register(@RequestBody RegisterRequest request) {
-        Map<String, Object> result = authService.register(
-                request.getEmail(),
-                request.getPassword(),
-                request.getFirstName(),
-                request.getLastName(),
-                request.getCompanyName()
-        );
-        return ResponseEntity.ok(result);
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Register a new user account")
+    public ResponseEntity<AuthDTO.AuthResponse> register(
+            @Valid @RequestBody AuthDTO.RegisterRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(authService.register(request));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest request) {
-        Map<String, Object> result = authService.login(request.getEmail(), request.getPassword());
-        return ResponseEntity.ok(result);
+    @Operation(summary = "Login and receive JWT tokens")
+    public ResponseEntity<AuthDTO.AuthResponse> login(
+            @Valid @RequestBody AuthDTO.LoginRequest request) {
+        return ResponseEntity.ok(authService.login(request));
+    }
+
+    @PostMapping("/refresh")
+    @Operation(summary = "Exchange a refresh token for a new access token")
+    public ResponseEntity<AuthDTO.AuthResponse> refresh(
+            @Valid @RequestBody AuthDTO.RefreshTokenRequest request) {
+        return ResponseEntity.ok(authService.refreshToken(request.refreshToken()));
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Map<String, Object>> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        String token = extractToken(authHeader);
-        return ResponseEntity.ok(authService.logout(token));
+    @Operation(summary = "Revoke refresh token (logout)")
+    public ResponseEntity<AuthDTO.MessageResponse> logout(
+            @Valid @RequestBody AuthDTO.RefreshTokenRequest request) {
+        authService.logout(request.refreshToken());
+        return ResponseEntity.ok(AuthDTO.MessageResponse.success("Logged out successfully"));
     }
 
     @GetMapping("/me")
-    public ResponseEntity<?> getCurrentUser(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        String token = extractToken(authHeader);
-        var user = authService.validateToken(token);
-        if (user == null) {
-            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
-        }
-        return ResponseEntity.ok(Map.of(
-                "id", user.getId(),
-                "email", user.getEmail(),
-                "firstName", user.getFirstName(),
-                "lastName", user.getLastName(),
-                "companyName", user.getCompanyName()
-        ));
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Get the currently authenticated user's profile")
+    public ResponseEntity<AuthDTO.UserInfo> me(
+            @AuthenticationPrincipal String userId) {
+        return ResponseEntity.ok(authService.getCurrentUser(userId));
     }
 
-    private String extractToken(String authHeader) {
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            return authHeader.substring(7);
-        }
-        return null;
-    }
-
-    static class RegisterRequest {
-        private String email;
-        private String password;
-        private String firstName;
-        private String lastName;
-        private String companyName;
-
-        public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
-        public String getPassword() { return password; }
-        public void setPassword(String password) { this.password = password; }
-        public String getFirstName() { return firstName; }
-        public void setFirstName(String firstName) { this.firstName = firstName; }
-        public String getLastName() { return lastName; }
-        public void setLastName(String lastName) { this.lastName = lastName; }
-        public String getCompanyName() { return companyName; }
-        public void setCompanyName(String companyName) { this.companyName = companyName; }
-    }
-
-    static class LoginRequest {
-        private String email;
-        private String password;
-
-        public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
-        public String getPassword() { return password; }
-        public void setPassword(String password) { this.password = password; }
+    @PutMapping("/change-password")
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Change password for the current user")
+    public ResponseEntity<AuthDTO.MessageResponse> changePassword(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody AuthDTO.ChangePasswordRequest request) {
+        authService.changePassword(userId, request);
+        return ResponseEntity.ok(AuthDTO.MessageResponse.success("Password updated successfully"));
     }
 }

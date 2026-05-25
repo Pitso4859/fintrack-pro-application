@@ -1,86 +1,78 @@
 package com.fintrack.service;
 
+import com.fintrack.dto.AccountDTO;
+import com.fintrack.exception.AuthException;
+import com.fintrack.exception.ResourceNotFoundException;
 import com.fintrack.model.Account;
 import com.fintrack.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
+import java.util.List;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AccountService {
 
     private final AccountRepository accountRepository;
 
-    public List<Account> getAccountsByUser(String userId) {
-        if (userId == null) {
-            return accountRepository.findAllAccountsOrderByCode();
-        }
-        return accountRepository.findAccountsByUserId(userId);
+    public List<Account> findAll(String userId) {
+        return accountRepository.findByUserIdAndIsActiveTrueOrderByCodeAsc(userId);
     }
 
-    public Account getAccountByIdAndUser(String id, String userId) {
-        return accountRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new RuntimeException("Account not found"));
+    public List<Account> findByType(String userId, Account.AccountType type) {
+        return accountRepository.findByUserIdAndTypeOrderByCodeAsc(userId, type);
     }
 
     @Transactional
-    public Account createAccount(Account account, String userId) {
-        // Check for duplicate code for this user
-        boolean codeExists = accountRepository.existsByCodeAndUserId(account.getCode(), userId);
-
-        // Also check system accounts (userId null)
-        if (!codeExists) {
-            // Check if code exists in system accounts
-            Account existingSystemAccount = accountRepository.findByCode(account.getCode()).orElse(null);
-            if (existingSystemAccount != null && existingSystemAccount.getUserId() == null) {
-                codeExists = true;
-            }
+    public Account create(String userId, AccountDTO.CreateRequest req) {
+        if (accountRepository.existsByUserIdAndCode(userId, req.code())) {
+            throw new AuthException("An account with code '" + req.code() + "' already exists");
         }
 
-        if (codeExists) {
-            throw new RuntimeException("Account code already exists");
-        }
+        Account account = Account.builder()
+                .userId(userId)
+                .code(req.code())
+                .name(req.name())
+                .type(req.type())
+                .description(req.description())
+                .vatApplicable(req.vatApplicable() != null ? req.vatApplicable() : false)
+                .currency(req.currency() != null ? req.currency() : "ZAR")
+                .normalBalance(req.type() == Account.AccountType.ASSET
+                        || req.type() == Account.AccountType.EXPENSE
+                        ? Account.NormalBalance.DEBIT
+                        : Account.NormalBalance.CREDIT)
+                .build();
 
-        account.setId("acc-" + System.currentTimeMillis());
-        account.setUserId(userId);
-        account.setCreatedAt(LocalDateTime.now());
-        if (account.getBalance() == null) {
-            account.setBalance(BigDecimal.ZERO);
-        }
         return accountRepository.save(account);
     }
 
     @Transactional
-    public Account updateAccount(String id, Account accountDetails, String userId) {
-        Account account = getAccountByIdAndUser(id, userId);
-        account.setName(accountDetails.getName());
-        account.setCode(accountDetails.getCode());
-        account.setType(accountDetails.getType());
-        if (accountDetails.getBalance() != null) {
-            account.setBalance(accountDetails.getBalance());
-        }
+    public Account update(String userId, String id, AccountDTO.UpdateRequest req) {
+        Account account = getOwnedOrThrow(userId, id);
+        if (req.name()         != null) account.setName(req.name());
+        if (req.description()  != null) account.setDescription(req.description());
+        if (req.vatApplicable() != null) account.setVatApplicable(req.vatApplicable());
+        if (req.isActive()     != null) account.setIsActive(req.isActive());
         return accountRepository.save(account);
     }
 
     @Transactional
-    public void deleteAccount(String id, String userId) {
-        Account account = getAccountByIdAndUser(id, userId);
-        accountRepository.delete(account);
+    public void delete(String userId, String id) {
+        Account account = getOwnedOrThrow(userId, id);
+        account.setIsActive(false);
+        accountRepository.save(account);
     }
 
-    public Map<String, BigDecimal> getBalanceSummary(String userId) {
-        Map<String, BigDecimal> summary = new HashMap<>();
-        summary.put("assets", accountRepository.getTotalAssets(userId));
-        summary.put("liabilities", accountRepository.getTotalLiabilities(userId));
-        summary.put("revenue", accountRepository.getTotalRevenue(userId));
-        summary.put("expenses", accountRepository.getTotalExpenses(userId));
-        summary.put("equity", accountRepository.getTotalRevenue(userId).subtract(accountRepository.getTotalExpenses(userId)));
-        return summary;
+    private Account getOwnedOrThrow(String userId, String id) {
+        Account account = accountRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Account", id));
+        if (!account.getUserId().equals(userId)) {
+            throw new ResourceNotFoundException("Account", id);
+        }
+        return account;
     }
 }

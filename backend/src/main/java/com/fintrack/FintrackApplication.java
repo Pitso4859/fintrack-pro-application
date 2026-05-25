@@ -2,17 +2,17 @@ package com.fintrack;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
+@EnableJpaAuditing
+@EnableScheduling
+@ConfigurationPropertiesScan
 public class FintrackApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(FintrackApplication.class, args);
-
-        System.out.println("=========================================");
-        System.out.println("  FinTrack Pro Backend Started!");
-        System.out.println("  Server: http://localhost:5000");
-        System.out.println("=========================================");
     }
-
 }

@@ -1,53 +1,50 @@
-@"
-# Compiled files
+# ============================================================
+# FinTrack Pro — .gitignore
+# ============================================================
+
+# Environment / secrets — NEVER commit these
+.env
+.env.local
+.env.production
+*.env
+
+# Java / Maven
+target/
 *.class
 *.jar
 *.war
 *.ear
-target/
-build/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
 
-# IDE files
+# Node / Frontend
+node_modules/
+dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# IDE
 .idea/
 *.iml
 .vscode/
-.settings/
-.project
-.classpath
+*.swp
+*.swo
 .DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
 
 # Logs
-logs/
 *.log
+logs/
 
-# Environment files
-.env
-.env.local
-.env.production
-application-prod.properties
-application-prod.properties
+# Test coverage
+htmlcov/
+coverage/
+jacoco.exec
 
-# Node modules
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Build outputs
-dist/
-build/
-
-# Database
-*.db
-*.sqlite
-
-# OS files
-Thumbs.db
-Desktop.ini
-
-# Secrets
-*secret*
-*password*
-*.key
-*.pem
-"@ | Out-File -FilePath .gitignore -Encoding utf8
+# OS
+.DS_Store
+desktop.ini

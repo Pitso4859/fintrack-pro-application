@@ -1,0 +1,196 @@
+name: FinTrack Pro CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/fintrack-pro-backend
+  JAVA_VERSION: '21'
+  NODE_VERSION: '20'
+
+jobs:
+
+  # ================================================================
+  # JOB 1: Backend Tests
+  # ================================================================
+  test-backend:
+    name: Backend — Test & Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: fintrack_test
+          POSTGRES_USER: fintrack
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Run backend tests
+        working-directory: ./backend
+        run: ./mvnw verify -Dspring.profiles.active=test
+        env:
+          DATABASE_URL: jdbc:postgresql://localhost:5432/fintrack_test
+          DATABASE_USERNAME: fintrack
+          DATABASE_PASSWORD: test_password
+          JWT_SECRET: test-secret-at-least-256-bits-long-for-testing
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: backend/target/surefire-reports/
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/target/site/jacoco/
+
+  # ================================================================
+  # JOB 2: Frontend Tests
+  # ================================================================
+  test-frontend:
+    name: Frontend — Lint, Type-check & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: ./frontend
+        run: npm run type-check
+
+      - name: Lint
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Build
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: https://fintrack-api.onrender.com/api
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+  # ================================================================
+  # JOB 3: Docker Build & Push (main branch only)
+  # ================================================================
+  docker-build-push:
+    name: Docker — Build & Push
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ================================================================
+  # JOB 4: Deploy to Render
+  # ================================================================
+  deploy:
+    name: Deploy to Render.com
+    runs-on: ubuntu-latest
+    needs: docker-build-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Trigger Render Backend Deploy
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}" | \
+            grep -q "200\|201" && echo "Backend deploy triggered" || exit 1
+
+      - name: Trigger Render Frontend Deploy
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}" | \
+            grep -q "200\|201" && echo "Frontend deploy triggered" || exit 1
+
+      - name: Wait for backend health check
+        run: |
+          echo "Waiting 60s for deployment to complete..."
+          sleep 60
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.RENDER_BACKEND_URL }}/actuator/health")
+          if [ "$HEALTH_STATUS" != "200" ]; then
+            echo "Health check failed: HTTP $HEALTH_STATUS"
+            exit 1
+          fi
+          echo "Backend is healthy!"
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "Deployment to Render.com successful!"
+          echo "Backend: ${{ secrets.RENDER_BACKEND_URL }}"
+          echo "Frontend: ${{ secrets.RENDER_FRONTEND_URL }}"
