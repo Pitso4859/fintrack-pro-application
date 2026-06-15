@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="009-create-user-settings" author="fintrack">
+        <createTable tableName="user_settings">
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="preferred_currency" type="VARCHAR(3)" defaultValue="ZAR"/>
+            <column name="date_format" type="VARCHAR(20)" defaultValue="YYYY-MM-DD"/>
+            <column name="email_notifications" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="two_factor_enabled" type="BOOLEAN" defaultValueBoolean="false"/>
+            <column name="theme" type="VARCHAR(20)" defaultValue="light"/>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>
