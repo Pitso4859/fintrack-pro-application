@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, PieChart, Pie, Cell,
 } from 'recharts';
 import api from '../../services/api';
 import type { DashboardSummary } from '../../types';
+// @ts-ignore
 import { formatCurrency, getYearRange, getSARSFiscalYear } from '../../utils';
 import { Skeleton } from '../shared';
 

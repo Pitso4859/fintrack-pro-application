@@ -162,7 +162,7 @@ export const Select: React.FC<SelectProps> = ({
 // ----------------------------------------------------------------
 // BADGE
 // ----------------------------------------------------------------
-type BadgeVariant = 'green' | 'red' | 'amber' | 'blue' | 'purple' | 'slate';
+export type BadgeVariant = 'green' | 'red' | 'amber' | 'blue' | 'purple' | 'slate';
 
 const badgeClasses: Record<BadgeVariant, string> = {
   green:  'bg-emerald-950 text-emerald-400 border border-emerald-900',

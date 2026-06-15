@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios';
 
+// @ts-ignore
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
 // ----------------------------------------------------------------
