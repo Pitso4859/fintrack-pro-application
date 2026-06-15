@@ -1,12 +1,13 @@
 package com.fintrack.controller;
 
 import com.fintrack.model.Bill;
-import com.fintrack.model.User;
 import com.fintrack.service.BillService;
-import com.fintrack.service.AuthService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -16,66 +17,30 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/bills")
 @RequiredArgsConstructor
+@SecurityRequirement(name = "bearerAuth")
+@Tag(name = "Bills", description = "Invoice / bill management")
 public class BillController {
 
     private final BillService billService;
-    private final AuthService authService;
-
-    private User getAuthenticatedUser(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return null;
-        }
-        String token = authHeader.substring(7);
-        return authService.validateToken(token);
-    }
-
-    // DTO for creating a bill from snake_case input
-    public static class CreateBillRequest {
-        public String supplier_name;
-        public String invoice_number;
-        public String invoice_date;
-        public BigDecimal total_amount;
-        public BigDecimal total_vat;
-        public String currency;
-        public String status;
-        public String document_data;
-        public BigDecimal deposit_required;
-    }
 
     @GetMapping
-    public ResponseEntity<?> getAllBills(@RequestHeader("Authorization") String authHeader) {
-        User user = getAuthenticatedUser(authHeader);
-        if (user == null) {
-            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
-        }
-        List<Bill> bills = billService.getBillsByUser(user.getId());
-
-        // Convert to snake_case response
+    public ResponseEntity<?> getAllBills(@AuthenticationPrincipal String userId) {
+        List<Bill> bills = billService.getBillsByUser(userId);
         List<Map<String, Object>> response = new ArrayList<>();
-        for (Bill bill : bills) {
-            response.add(convertBillToMap(bill));
-        }
+        for (Bill bill : bills) response.add(convertBillToMap(bill));
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/pending/count")
-    public ResponseEntity<?> getPendingCount(@RequestHeader("Authorization") String authHeader) {
-        User user = getAuthenticatedUser(authHeader);
-        if (user == null) {
-            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
-        }
-        return ResponseEntity.ok(Map.of("count", billService.getPendingCount(user.getId())));
+    public ResponseEntity<?> getPendingCount(@AuthenticationPrincipal String userId) {
+        return ResponseEntity.ok(Map.of("count", billService.getPendingCount(userId)));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getBillById(@PathVariable String id, @RequestHeader("Authorization") String authHeader) {
-        User user = getAuthenticatedUser(authHeader);
-        if (user == null) {
-            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
-        }
+    public ResponseEntity<?> getBillById(@PathVariable String id,
+                                         @AuthenticationPrincipal String userId) {
         try {
-            Bill bill = billService.getBillByIdAndUser(id, user.getId());
-            return ResponseEntity.ok(convertBillToMap(bill));
+            return ResponseEntity.ok(convertBillToMap(billService.getBillByIdAndUser(id, userId)));
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
@@ -83,101 +48,31 @@ public class BillController {
 
     @PostMapping
     public ResponseEntity<?> createBill(@RequestBody Map<String, Object> request,
-                                        @RequestHeader("Authorization") String authHeader) {
-        User user = getAuthenticatedUser(authHeader);
-        if (user == null) {
-            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
-        }
-
+                                        @AuthenticationPrincipal String userId) {
         try {
             Bill bill = new Bill();
             bill.setId("bill-" + System.currentTimeMillis());
-            bill.setUserId(user.getId());
+            bill.setUserId(userId);
             bill.setCreatedAt(LocalDateTime.now());
 
-            // Handle both camelCase and snake_case field names
-            // Try snake_case first, then camelCase as fallback
+            String supplierName = getStr(request, "supplier_name", "supplierName");
+            if (supplierName == null) return ResponseEntity.badRequest().body(Map.of("error", "supplier_name is required"));
+            bill.setSupplierName(supplierName);
 
-            // Supplier Name
-            if (request.containsKey("supplier_name")) {
-                bill.setSupplierName((String) request.get("supplier_name"));
-            } else if (request.containsKey("supplierName")) {
-                bill.setSupplierName((String) request.get("supplierName"));
-            } else {
-                return ResponseEntity.badRequest().body(Map.of("error", "supplier_name is required"));
-            }
+            bill.setInvoiceNumber(getStr(request, "invoice_number", "invoiceNumber"));
 
-            // Invoice Number
-            if (request.containsKey("invoice_number")) {
-                bill.setInvoiceNumber((String) request.get("invoice_number"));
-            } else if (request.containsKey("invoiceNumber")) {
-                bill.setInvoiceNumber((String) request.get("invoiceNumber"));
-            }
+            String dateStr = getStr(request, "invoice_date", "invoiceDate");
+            bill.setInvoiceDate(dateStr != null ? LocalDate.parse(dateStr) : LocalDate.now());
 
-            // Invoice Date
-            if (request.containsKey("invoice_date")) {
-                String dateStr = (String) request.get("invoice_date");
-                bill.setInvoiceDate(LocalDate.parse(dateStr));
-            } else if (request.containsKey("invoiceDate")) {
-                String dateStr = (String) request.get("invoiceDate");
-                bill.setInvoiceDate(LocalDate.parse(dateStr));
-            } else {
-                bill.setInvoiceDate(LocalDate.now());
-            }
+            bill.setTotalAmount(getBigDecimal(request, "total_amount", "totalAmount", BigDecimal.ZERO));
+            bill.setTotalVat(getBigDecimal(request, "total_vat", "totalVat", BigDecimal.ZERO));
+            bill.setCurrency(getStr(request, "currency", "currency") != null ? getStr(request, "currency", "currency") : "ZAR");
+            bill.setStatus(getStr(request, "status", "status") != null ? getStr(request, "status", "status") : "PENDING");
+            bill.setDocumentData(getStr(request, "document_data", "documentData"));
+            bill.setDepositRequired(getBigDecimal(request, "deposit_required", "depositRequired", BigDecimal.ZERO));
 
-            // Total Amount
-            if (request.containsKey("total_amount")) {
-                bill.setTotalAmount(new BigDecimal(request.get("total_amount").toString()));
-            } else if (request.containsKey("totalAmount")) {
-                bill.setTotalAmount(new BigDecimal(request.get("totalAmount").toString()));
-            } else {
-                bill.setTotalAmount(BigDecimal.ZERO);
-            }
-
-            // Total VAT
-            if (request.containsKey("total_vat")) {
-                bill.setTotalVat(new BigDecimal(request.get("total_vat").toString()));
-            } else if (request.containsKey("totalVat")) {
-                bill.setTotalVat(new BigDecimal(request.get("totalVat").toString()));
-            } else {
-                bill.setTotalVat(BigDecimal.ZERO);
-            }
-
-            // Currency
-            if (request.containsKey("currency")) {
-                bill.setCurrency((String) request.get("currency"));
-            } else {
-                bill.setCurrency("ZAR");
-            }
-
-            // Status
-            if (request.containsKey("status")) {
-                bill.setStatus((String) request.get("status"));
-            } else {
-                bill.setStatus("PENDING");
-            }
-
-            // Document Data
-            if (request.containsKey("document_data")) {
-                bill.setDocumentData((String) request.get("document_data"));
-            } else if (request.containsKey("documentData")) {
-                bill.setDocumentData((String) request.get("documentData"));
-            }
-
-            // Deposit Required
-            if (request.containsKey("deposit_required")) {
-                bill.setDepositRequired(new BigDecimal(request.get("deposit_required").toString()));
-            } else if (request.containsKey("depositRequired")) {
-                bill.setDepositRequired(new BigDecimal(request.get("depositRequired").toString()));
-            } else {
-                bill.setDepositRequired(BigDecimal.ZERO);
-            }
-
-            Bill created = billService.createBill(bill, user.getId());
-            return ResponseEntity.status(HttpStatus.CREATED).body(convertBillToMap(created));
-
+            return ResponseEntity.status(HttpStatus.CREATED).body(convertBillToMap(billService.createBill(bill, userId)));
         } catch (Exception e) {
-            e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
@@ -185,18 +80,11 @@ public class BillController {
     @PutMapping("/{id}")
     public ResponseEntity<?> updateBillStatus(@PathVariable String id,
                                               @RequestBody Map<String, String> body,
-                                              @RequestHeader("Authorization") String authHeader) {
-        User user = getAuthenticatedUser(authHeader);
-        if (user == null) {
-            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
-        }
+                                              @AuthenticationPrincipal String userId) {
         String status = body.get("status");
-        if (status == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "status field required"));
-        }
+        if (status == null) return ResponseEntity.badRequest().body(Map.of("error", "status field required"));
         try {
-            Bill updated = billService.updateBillStatus(id, status, user.getId());
-            return ResponseEntity.ok(convertBillToMap(updated));
+            return ResponseEntity.ok(convertBillToMap(billService.updateBillStatus(id, status, userId)));
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
@@ -204,20 +92,26 @@ public class BillController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteBill(@PathVariable String id,
-                                        @RequestHeader("Authorization") String authHeader) {
-        User user = getAuthenticatedUser(authHeader);
-        if (user == null) {
-            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
-        }
+                                        @AuthenticationPrincipal String userId) {
         try {
-            billService.deleteBill(id, user.getId());
+            billService.deleteBill(id, userId);
             return ResponseEntity.noContent().build();
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
     }
 
-    // Helper method to convert Bill to snake_case Map
+    private String getStr(Map<String, Object> r, String snake, String camel) {
+        if (r.containsKey(snake)) return (String) r.get(snake);
+        if (r.containsKey(camel)) return (String) r.get(camel);
+        return null;
+    }
+
+    private BigDecimal getBigDecimal(Map<String, Object> r, String snake, String camel, BigDecimal def) {
+        Object v = r.containsKey(snake) ? r.get(snake) : r.get(camel);
+        return v != null ? new BigDecimal(v.toString()) : def;
+    }
+
     private Map<String, Object> convertBillToMap(Bill bill) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", bill.getId());

@@ -334,17 +334,17 @@ public class AIService {
 
         for (Account acc : accounts) {
             BigDecimal balance = acc.getBalance() != null ? acc.getBalance() : BigDecimal.ZERO;
-            String type = acc.getType();
+            String type = acc.getType() != null ? acc.getType().name() : "";
 
-            if ("Revenue".equalsIgnoreCase(type)) {
+            if ("REVENUE".equalsIgnoreCase(type)) {
                 totalRevenue = totalRevenue.add(balance);
-            } else if ("Expense".equalsIgnoreCase(type)) {
+            } else if ("EXPENSE".equalsIgnoreCase(type)) {
                 totalExpenses = totalExpenses.add(balance);
-            } else if ("Asset".equalsIgnoreCase(type)) {
+            } else if ("ASSET".equalsIgnoreCase(type)) {
                 totalAssets = totalAssets.add(balance);
-            } else if ("Liability".equalsIgnoreCase(type)) {
+            } else if ("LIABILITY".equalsIgnoreCase(type)) {
                 totalLiabilities = totalLiabilities.add(balance);
-            } else if ("Equity".equalsIgnoreCase(type)) {
+            } else if ("EQUITY".equalsIgnoreCase(type)) {
                 totalEquity = totalEquity.add(balance);
             }
         }
@@ -363,10 +363,10 @@ public class AIService {
 
         for (Transaction tx : transactions) {
             BigDecimal vat = tx.getVatAmount() != null ? tx.getVatAmount() : BigDecimal.ZERO;
-            if ("INVOICE".equals(tx.getType())) {
+            if (Transaction.TransactionType.INVOICE.equals(tx.getType())) {
                 outputVat = outputVat.add(vat);
-            } else if ("EXPENSE".equals(tx.getType())) {
-                if (Boolean.TRUE.equals(tx.getIsVatClaimed())) {
+            } else if (Transaction.TransactionType.EXPENSE.equals(tx.getType())) {
+                if (tx.getVatAmount() != null && tx.getVatAmount().compareTo(java.math.BigDecimal.ZERO) > 0) {
                     inputVat = inputVat.add(vat);
                 } else if (vat.compareTo(BigDecimal.ZERO) > 0) {
                     unclaimedVat = unclaimedVat.add(vat);
@@ -684,8 +684,8 @@ public class AIService {
     private String getRevenueBreakdown(List<Transaction> transactions) {
         Map<String, BigDecimal> revenueByCategory = new HashMap<>();
         for (Transaction tx : transactions) {
-            if (tx != null && "INVOICE".equals(tx.getType())) {
-                String cat = tx.getCategory() != null ? tx.getCategory() : "Uncategorized";
+            if (tx != null && Transaction.TransactionType.INVOICE.equals(tx.getType())) {
+                String cat = tx.getDescription() != null ? tx.getDescription() : "Uncategorized";
                 BigDecimal amount = tx.getAmount() != null ? tx.getAmount().subtract(tx.getVatAmount()) : BigDecimal.ZERO;
                 revenueByCategory.merge(cat, amount, BigDecimal::add);
             }
@@ -711,8 +711,8 @@ public class AIService {
     private String getExpenseBreakdown(List<Transaction> transactions) {
         Map<String, BigDecimal> expenseByCategory = new HashMap<>();
         for (Transaction tx : transactions) {
-            if (tx != null && "EXPENSE".equals(tx.getType())) {
-                String cat = tx.getCategory() != null ? tx.getCategory() : "Uncategorized";
+            if (tx != null && Transaction.TransactionType.EXPENSE.equals(tx.getType())) {
+                String cat = tx.getDescription() != null ? tx.getDescription() : "Uncategorized";
                 BigDecimal amount = tx.getAmount() != null ? tx.getAmount().subtract(tx.getVatAmount()) : BigDecimal.ZERO;
                 expenseByCategory.merge(cat, amount, BigDecimal::add);
             }
@@ -777,20 +777,20 @@ public class AIService {
     private String determineAccountType(String accountName) {
         String lower = accountName.toLowerCase();
         if (lower.contains("bank") || lower.contains("cash") || lower.contains("debtor") || lower.contains("receivable") || lower.contains("inventory")) {
-            return "Asset";
+            return "ASSET";
         }
         if (lower.contains("creditor") || lower.contains("payable") || lower.contains("vat") || lower.contains("tax") || lower.contains("sars")) {
-            return "Liability";
+            return "LIABILITY";
         }
         if (lower.contains("revenue") || lower.contains("sales") || lower.contains("income") || lower.contains("service")) {
-            return "Revenue";
+            return "REVENUE";
         }
         if (lower.contains("expense") || lower.contains("cost") || lower.contains("operating") || lower.contains("supplies")) {
-            return "Expense";
+            return "EXPENSE";
         }
         if (lower.contains("equity") || lower.contains("capital") || lower.contains("owner")) {
-            return "Equity";
+            return "EQUITY";
         }
-        return "Expense";
+        return "EXPENSE";
     }
 }

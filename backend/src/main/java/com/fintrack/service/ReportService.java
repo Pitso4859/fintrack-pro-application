@@ -119,7 +119,7 @@ public class ReportService {
         LocalDate endDate = startDate.plusMonths(3).minusDays(1);
 
         // Get transactions for the quarter for this user
-        List<Transaction> transactions = transactionRepository.findByUserIdAndTransactionDateBetween(userId, startDate, endDate);
+        List<Transaction> transactions = transactionRepository.findByUserIdAndTransactionDateBetweenOrderByTransactionDateAsc(userId, startDate, endDate);
 
         BigDecimal standardRateSales = BigDecimal.ZERO;
         BigDecimal outputVat = BigDecimal.ZERO;
@@ -130,7 +130,7 @@ public class ReportService {
             for (Transaction tx : transactions) {
                 if (tx == null) continue;
 
-                if ("INVOICE".equals(tx.getType())) {
+                if (Transaction.TransactionType.INVOICE.equals(tx.getType())) {
                     BigDecimal amountExclVat = tx.getAmount().subtract(tx.getVatAmount());
                     if (amountExclVat != null) {
                         standardRateSales = standardRateSales.add(amountExclVat);
@@ -138,7 +138,7 @@ public class ReportService {
                     if (tx.getVatAmount() != null) {
                         outputVat = outputVat.add(tx.getVatAmount());
                     }
-                } else if ("EXPENSE".equals(tx.getType()) && Boolean.TRUE.equals(tx.getIsVatClaimed())) {
+                } else if (Transaction.TransactionType.EXPENSE.equals(tx.getType()) && tx.getVatAmount() != null && tx.getVatAmount().compareTo(java.math.BigDecimal.ZERO) > 0) {
                     BigDecimal amountExclVat = tx.getAmount().subtract(tx.getVatAmount());
                     if (amountExclVat != null) {
                         standardRatePurchases = standardRatePurchases.add(amountExclVat);

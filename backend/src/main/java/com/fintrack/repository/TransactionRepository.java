@@ -40,35 +40,35 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             @Param("search") String search,
             Pageable pageable);
 
-    @Query("""
-        SELECT SUM(t.amount) FROM Transaction t
-        WHERE t.userId = :userId
-          AND t.type = 'INVOICE'
-          AND t.transactionDate BETWEEN :from AND :to
-        """)
-    BigDecimal sumRevenueByPeriod(@Param("userId") String userId,
-                                  @Param("from") LocalDate from,
-                                  @Param("to") LocalDate to);
+    @Query("SELECT SUM(t.amount) FROM Transaction t WHERE t.userId = :userId AND t.type = 'INVOICE' AND t.transactionDate BETWEEN :from AND :to")
+    BigDecimal sumRevenueByPeriod(@Param("userId") String userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 
-    @Query("""
-        SELECT SUM(t.amount) FROM Transaction t
-        WHERE t.userId = :userId
-          AND t.type = 'EXPENSE'
-          AND t.transactionDate BETWEEN :from AND :to
-        """)
-    BigDecimal sumExpensesByPeriod(@Param("userId") String userId,
-                                   @Param("from") LocalDate from,
-                                   @Param("to") LocalDate to);
+    @Query("SELECT SUM(t.amount) FROM Transaction t WHERE t.userId = :userId AND t.type = 'EXPENSE' AND t.transactionDate BETWEEN :from AND :to")
+    BigDecimal sumExpensesByPeriod(@Param("userId") String userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 
-    @Query("""
-        SELECT SUM(t.vatAmount) FROM Transaction t
-        WHERE t.userId = :userId
-          AND t.transactionDate BETWEEN :from AND :to
-        """)
-    BigDecimal sumVatByPeriod(@Param("userId") String userId,
-                              @Param("from") LocalDate from,
-                              @Param("to") LocalDate to);
+    @Query("SELECT SUM(t.vatAmount) FROM Transaction t WHERE t.userId = :userId AND t.transactionDate BETWEEN :from AND :to")
+    BigDecimal sumVatByPeriod(@Param("userId") String userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 
+    // Used by ReportService VAT201
     List<Transaction> findByUserIdAndTransactionDateBetweenOrderByTransactionDateAsc(
             String userId, LocalDate from, LocalDate to);
+
+    // Used by ReportService dashboard
+    @Query("SELECT COALESCE(SUM(t.vatAmount), 0) FROM Transaction t WHERE t.userId = :userId AND t.type = 'INVOICE'")
+    BigDecimal getTotalOutputVat(@Param("userId") String userId);
+
+    @Query("SELECT COALESCE(SUM(t.vatAmount), 0) FROM Transaction t WHERE t.userId = :userId AND t.type = 'EXPENSE'")
+    BigDecimal getTotalInputVat(@Param("userId") String userId);
+
+    @Query("SELECT COALESCE(SUM(t.vatAmount), 0) FROM Transaction t WHERE t.userId = :userId AND t.type = 'EXPENSE' AND t.vatAmount > 0")
+    BigDecimal getTotalUnclaimedVat(@Param("userId") String userId);
+
+    @Query("SELECT COALESCE(SUM(t.netAmount), 0) FROM Transaction t WHERE t.userId = :userId AND t.type = 'INVOICE'")
+    BigDecimal getTotalRevenueExcludingVat(@Param("userId") String userId);
+
+    @Query("SELECT COALESCE(SUM(t.netAmount), 0) FROM Transaction t WHERE t.userId = :userId AND t.type = 'EXPENSE'")
+    BigDecimal getTotalExpensesExcludingVat(@Param("userId") String userId);
+
+    @Query("SELECT t.description, COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.userId = :userId AND t.type = :type GROUP BY t.description ORDER BY SUM(t.amount) DESC")
+    List<Object[]> getCategoryBreakdown(@Param("type") String type, @Param("userId") String userId);
 }
