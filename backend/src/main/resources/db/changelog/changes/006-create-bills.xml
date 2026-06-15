@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="006-create-bills" author="fintrack">
+        <createTable tableName="bills">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="supplier_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="invoice_number" type="VARCHAR(100)"/>
+            <column name="invoice_date" type="DATE"/>
+            <column name="total_amount" type="DECIMAL(15,2)" defaultValueNumeric="0.00"/>
+            <column name="total_vat" type="DECIMAL(15,2)" defaultValueNumeric="0.00"/>
+            <column name="currency" type="VARCHAR(3)" defaultValue="ZAR"/>
+            <column name="status" type="VARCHAR(20)" defaultValue="PENDING"/>
+            <column name="document_data" type="TEXT"/>
+            <column name="deposit_required" type="DECIMAL(15,2)" defaultValueNumeric="0.00"/>
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="bills" indexName="idx_bills_user">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

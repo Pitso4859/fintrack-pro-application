@@ -9,5 +9,10 @@
     <include file="classpath:db/changelog/changes/002-create-refresh-tokens.xml"/>
     <include file="classpath:db/changelog/changes/003-create-transactions.xml"/>
     <include file="classpath:db/changelog/changes/004-create-accounts.xml"/>
+    <include file="classpath:db/changelog/changes/005-create-assets.xml"/>
+    <include file="classpath:db/changelog/changes/006-create-bills.xml"/>
+    <include file="classpath:db/changelog/changes/007-create-bill-items.xml"/>
+    <include file="classpath:db/changelog/changes/008-create-sessions.xml"/>
+    <include file="classpath:db/changelog/changes/009-create-user-settings.xml"/>
 
 </databaseChangeLog>

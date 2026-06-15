@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="007-create-bill-items" author="fintrack">
+        <createTable tableName="bill_items">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="bill_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity" type="DECIMAL(15,2)" defaultValueNumeric="1.00"/>
+            <column name="unit_price" type="DECIMAL(15,2)" defaultValueNumeric="0.00"/>
+            <column name="total" type="DECIMAL(15,2)" defaultValueNumeric="0.00"/>
+            <column name="vat_amount" type="DECIMAL(15,2)" defaultValueNumeric="0.00"/>
+        </createTable>
+
+        <createIndex tableName="bill_items" indexName="idx_bill_items_bill">
+            <column name="bill_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
